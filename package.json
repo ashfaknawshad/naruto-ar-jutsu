@@ -1,0 +1,22 @@
+{
+  "name": "naruto-ar-jutsu",
+  "version": "0.1.0",
+  "description": "Kekkai — Naruto hand-sign recognition with real-time AR jutsu effects",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:lan": "vite --host",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host"
+  },
+  "license": "ISC",
+  "devDependencies": {
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "^1.0.1",
+    "three": "^0.185.1"
+  }
+}

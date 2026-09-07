@@ -141,3 +141,28 @@ html, body {
 .recorder-buttons button:hover {
   background: #333;
 }
+
+.recorder-countdown {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 18vw;
+  font-weight: bold;
+  color: #7dfcff;
+  text-shadow: 0 0 24px rgba(125, 252, 255, 0.8);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 20;
+  transition: opacity 0.15s ease;
+}
+
+.recorder-countdown.visible {
+  opacity: 0.9;
+}
+
+.recorder-countdown.recording {
+  color: #ff5d5d;
+  text-shadow: 0 0 24px rgba(255, 93, 93, 0.8);
+  font-size: 10vw;
+}

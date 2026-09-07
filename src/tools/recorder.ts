@@ -4,7 +4,9 @@ import { buildFeatureVector, FEATURE_LENGTH } from "../perception/features";
 import { ALL_LABELS, type Label } from "../data/seals";
 
 const STORAGE_KEY = "kekkai-dataset-v1";
-const MAX_FRAMES_PER_HOLD = 300; // ~10s safety cap in case a keyup is missed
+const COUNTDOWN_MS = 3000; // time to get both hands into position, hands-free
+const CAPTURE_MS = 2000; // burst length once countdown hits zero
+const REST_MS = 900; // pause between reps when auto-repeat is on
 
 interface Sample {
   label: Label;
@@ -48,6 +50,8 @@ export interface RecorderDeps {
   hud: HTMLDivElement;
 }
 
+type Phase = "idle" | "countdown" | "capturing" | "resting";
+
 export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }: RecorderDeps): void {
   const dataset = loadDataset();
 
@@ -65,6 +69,17 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
   }
   labelSelect.addEventListener("change", () => labelSelect.blur());
 
+  const loopToggle = document.createElement("input");
+  loopToggle.type = "checkbox";
+  loopToggle.id = "recorder-loop";
+  const loopLabel = document.createElement("label");
+  loopLabel.htmlFor = "recorder-loop";
+  loopLabel.textContent = "auto-repeat";
+  loopLabel.style.display = "flex";
+  loopLabel.style.alignItems = "center";
+  loopLabel.style.gap = "4px";
+  loopLabel.prepend(loopToggle);
+
   const status = document.createElement("div");
   status.className = "recorder-status";
 
@@ -73,6 +88,10 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
 
   const buttons = document.createElement("div");
   buttons.className = "recorder-buttons";
+
+  const startBtn = document.createElement("button");
+  startBtn.textContent = "Start (Space)";
+  startBtn.addEventListener("click", () => beginRep());
 
   const downloadBtn = document.createElement("button");
   downloadBtn.textContent = "Download JSON";
@@ -95,14 +114,13 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
     renderCounts();
   });
 
-  buttons.append(downloadBtn, clearBtn);
-  panel.append(
-    labelRow("Label:", labelSelect),
-    status,
-    counts,
-    buttons,
-  );
+  buttons.append(startBtn, downloadBtn, clearBtn);
+  panel.append(labelRow("Label:", labelSelect), labelRow("", loopLabel), status, counts, buttons);
   document.querySelector("#app")!.appendChild(panel);
+
+  const countdownOverlay = document.createElement("div");
+  countdownOverlay.className = "recorder-countdown";
+  document.querySelector("#app")!.appendChild(countdownOverlay);
 
   function labelRow(text: string, control: HTMLElement): HTMLElement {
     const row = document.createElement("div");
@@ -130,22 +148,34 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
   }
   renderCounts();
 
-  // --- Recording ----------------------------------------------------------
-  let recording = false;
-  let framesThisHold = 0;
+  // --- Rep state machine ---------------------------------------------------
+  // idle -> countdown (3s, hands-free) -> capturing (2s burst) -> resting
+  // (0.9s) -> back to countdown if auto-repeat is on, else idle. Nothing
+  // requires a key held during the actual sign, so two-handed seals work.
+  let phase: Phase = "idle";
+  let phaseEndsAt = 0;
+  let framesThisRep = 0;
+
+  function beginRep() {
+    if (phase !== "idle" && phase !== "resting") return;
+    phase = "countdown";
+    phaseEndsAt = performance.now() + COUNTDOWN_MS;
+  }
+
+  function cancelRep() {
+    phase = "idle";
+    countdownOverlay.textContent = "";
+    countdownOverlay.classList.remove("visible");
+  }
 
   window.addEventListener("keydown", (e) => {
-    if (e.code !== "Space" || e.repeat) return;
     if (document.activeElement === labelSelect) return;
-    e.preventDefault();
-    recording = true;
-    framesThisHold = 0;
-  });
-  window.addEventListener("keyup", (e) => {
-    if (e.code !== "Space") return;
-    recording = false;
-    saveDataset(dataset);
-    renderCounts();
+    if (e.code === "Space" && !e.repeat) {
+      e.preventDefault();
+      beginRep();
+    } else if (e.code === "Escape") {
+      cancelRep();
+    }
   });
 
   // --- Loop ---------------------------------------------------------------
@@ -161,36 +191,70 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
     if (fpsWindow.length > 30) fpsWindow.shift();
     const fps = fpsWindow.reduce((a, b) => a + b, 0) / fpsWindow.length;
 
+    // Phase transitions are time-driven, independent of detection cadence.
+    if (phase === "countdown" && now >= phaseEndsAt) {
+      phase = "capturing";
+      phaseEndsAt = now + CAPTURE_MS;
+      framesThisRep = 0;
+    } else if (phase === "capturing" && now >= phaseEndsAt) {
+      saveDataset(dataset);
+      renderCounts();
+      if (loopToggle.checked) {
+        phase = "resting";
+        phaseEndsAt = now + REST_MS;
+      } else {
+        phase = "idle";
+      }
+    } else if (phase === "resting" && now >= phaseEndsAt) {
+      phase = "countdown";
+      phaseEndsAt = now + COUNTDOWN_MS;
+    }
+
     if (!detecting && video.readyState >= 2) {
       detecting = true;
       detectCtx.drawImage(video, 0, 0, detectCanvas.width, detectCanvas.height);
       const result = detectHands(detectCanvas, now);
       drawHandLandmarks(ctx, result, canvas.width, canvas.height);
 
-      if (recording && framesThisHold < MAX_FRAMES_PER_HOLD) {
+      if (phase === "capturing") {
         const features = buildFeatureVector(result);
-        dataset.samples.push({
-          label: labelSelect.value as Label,
-          features: Array.from(features),
-        });
-        framesThisHold++;
-      } else if (recording) {
-        recording = false; // hit the safety cap — force a fresh keypress
-        saveDataset(dataset);
-        renderCounts();
+        dataset.samples.push({ label: labelSelect.value as Label, features: Array.from(features) });
+        framesThisRep++;
       }
 
       detecting = false;
     }
 
-    status.textContent = recording
-      ? `● recording "${labelSelect.value}" — ${framesThisHold} frames this hold`
-      : "hold SPACE to record the selected label";
-    status.classList.toggle("recording", recording);
+    updateOverlay(now);
 
     hud.textContent = `fps: ${fps.toFixed(0)}\nsamples: ${dataset.samples.length}`;
 
     requestAnimationFrame(loop);
+  }
+
+  function updateOverlay(now: number) {
+    if (phase === "countdown") {
+      const secsLeft = Math.ceil((phaseEndsAt - now) / 1000);
+      countdownOverlay.textContent = String(Math.max(secsLeft, 1));
+      countdownOverlay.className = "recorder-countdown visible";
+      status.textContent = `get ready: "${labelSelect.value}"`;
+      status.classList.remove("recording");
+    } else if (phase === "capturing") {
+      countdownOverlay.textContent = "●";
+      countdownOverlay.className = "recorder-countdown visible recording";
+      status.textContent = `● recording "${labelSelect.value}" — ${framesThisRep} frames`;
+      status.classList.add("recording");
+    } else if (phase === "resting") {
+      countdownOverlay.textContent = "";
+      countdownOverlay.className = "recorder-countdown";
+      status.textContent = `captured ${framesThisRep} frames — next rep starting...`;
+      status.classList.remove("recording");
+    } else {
+      countdownOverlay.textContent = "";
+      countdownOverlay.className = "recorder-countdown";
+      status.textContent = "press SPACE (or Start) — hands free until the countdown ends";
+      status.classList.remove("recording");
+    }
   }
 
   requestAnimationFrame(loop);

@@ -106,6 +106,11 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
   startBtn.textContent = "Start (Space)";
   startBtn.addEventListener("click", () => beginRep());
 
+  const undoBtn = document.createElement("button");
+  undoBtn.textContent = "Undo last take (Backspace)";
+  undoBtn.disabled = true;
+  undoBtn.addEventListener("click", () => undoLastTake());
+
   const downloadBtn = document.createElement("button");
   downloadBtn.textContent = "Download JSON";
   downloadBtn.addEventListener("click", () => {
@@ -128,7 +133,7 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
     renderCounts();
   });
 
-  buttons.append(startBtn, downloadBtn, clearBtn);
+  buttons.append(startBtn, undoBtn, downloadBtn, clearBtn);
   panel.append(
     labelRow("Name:", nameInput),
     labelRow("Label:", labelSelect),
@@ -177,6 +182,33 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
   let phase: Phase = "idle";
   let phaseEndsAt = 0;
   let framesThisRep = 0;
+  let repStartIndex = 0;
+
+  // The most recently completed take, so a bad rep (missed the pose, hand
+  // out of frame, panned away) can be discarded without a full re-record.
+  // Cleared once a new rep starts, so "undo" only ever means "the last one".
+  let lastTake: { start: number; count: number; label: Label } | null = null;
+
+  function setLastTake(take: typeof lastTake) {
+    lastTake = take;
+    undoBtn.disabled = !take;
+  }
+
+  let flashText = "";
+  let flashUntil = 0;
+  function flash(text: string, ms = 1500) {
+    flashText = text;
+    flashUntil = performance.now() + ms;
+  }
+
+  function undoLastTake() {
+    if (!lastTake) return;
+    dataset.samples.splice(lastTake.start, lastTake.count);
+    saveDataset(dataset);
+    renderCounts();
+    flash(`discarded ${lastTake.count} frames of "${lastTake.label}"`);
+    setLastTake(null);
+  }
 
   function beginRep() {
     if (phase !== "idle" && phase !== "resting") return;
@@ -185,6 +217,7 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
       nameInput.focus();
       return;
     }
+    setLastTake(null);
     phase = "countdown";
     phaseEndsAt = performance.now() + COUNTDOWN_MS;
   }
@@ -196,12 +229,15 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
   }
 
   window.addEventListener("keydown", (e) => {
-    if (document.activeElement === labelSelect) return;
+    if (document.activeElement === labelSelect || document.activeElement === nameInput) return;
     if (e.code === "Space" && !e.repeat) {
       e.preventDefault();
       beginRep();
     } else if (e.code === "Escape") {
       cancelRep();
+    } else if (e.code === "Backspace" && !e.repeat) {
+      e.preventDefault();
+      undoLastTake();
     }
   });
 
@@ -223,9 +259,11 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
       phase = "capturing";
       phaseEndsAt = now + CAPTURE_MS;
       framesThisRep = 0;
+      repStartIndex = dataset.samples.length;
     } else if (phase === "capturing" && now >= phaseEndsAt) {
       saveDataset(dataset);
       renderCounts();
+      setLastTake({ start: repStartIndex, count: framesThisRep, label: labelSelect.value as Label });
       if (loopToggle.checked) {
         phase = "resting";
         phaseEndsAt = now + REST_MS;
@@ -264,6 +302,15 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
   }
 
   function updateOverlay(now: number) {
+    if (now < flashUntil) {
+      status.textContent = flashText;
+      status.classList.remove("recording");
+      if (phase === "idle") {
+        countdownOverlay.textContent = "";
+        countdownOverlay.className = "recorder-countdown";
+      }
+      if (phase !== "countdown" && phase !== "capturing") return;
+    }
     if (phase === "countdown") {
       const secsLeft = Math.ceil((phaseEndsAt - now) / 1000);
       countdownOverlay.textContent = String(Math.max(secsLeft, 1));
@@ -278,12 +325,14 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
     } else if (phase === "resting") {
       countdownOverlay.textContent = "";
       countdownOverlay.className = "recorder-countdown";
-      status.textContent = `captured ${framesThisRep} frames — next rep starting...`;
+      status.textContent = `captured ${framesThisRep} frames — next rep starting... (Backspace to undo)`;
       status.classList.remove("recording");
     } else {
       countdownOverlay.textContent = "";
       countdownOverlay.className = "recorder-countdown";
-      status.textContent = "press SPACE (or Start) — hands free until the countdown ends";
+      status.textContent = lastTake
+        ? `last take: ${lastTake.count} frames of "${lastTake.label}" — Backspace to undo, or Space for the next rep`
+        : "press SPACE (or Start) — hands free until the countdown ends";
       status.classList.remove("recording");
     }
   }

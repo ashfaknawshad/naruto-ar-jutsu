@@ -125,21 +125,29 @@ html, body {
 
 .recorder-buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .recorder-buttons button {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 90px;
   padding: 6px;
   border-radius: 6px;
   border: 1px solid #444;
   background: #222;
   color: #fff;
   cursor: pointer;
+  font-size: 12px;
 }
 
 .recorder-buttons button:hover {
   background: #333;
+}
+
+.recorder-buttons button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .recorder-countdown {

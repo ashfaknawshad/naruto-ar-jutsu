@@ -28,11 +28,16 @@ export async function initHandTracker(): Promise<HandLandmarker> {
 }
 
 /**
- * Detects hands in the given video frame. Never call this concurrently with
- * itself — the caller's render loop should skip a frame if the previous
- * detection hasn't returned yet rather than queueing calls.
+ * Detects hands in the given frame (typically a downscaled canvas fed from
+ * the camera, not the full-resolution video element — inference cost scales
+ * with input pixels). Never call this concurrently with itself — the
+ * caller's render loop should skip a frame if the previous detection hasn't
+ * returned yet rather than queueing calls.
  */
-export function detectHands(video: HTMLVideoElement, timestampMs: number): HandLandmarkerResult {
+export function detectHands(
+  source: HTMLVideoElement | HTMLCanvasElement,
+  timestampMs: number,
+): HandLandmarkerResult {
   if (!landmarker) throw new Error("initHandTracker() must be awaited before detectHands()");
-  return landmarker.detectForVideo(video, timestampMs);
+  return landmarker.detectForVideo(source, timestampMs);
 }

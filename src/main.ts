@@ -9,9 +9,20 @@ const hud = document.querySelector<HTMLDivElement>("#hud")!;
 const picker = document.querySelector<HTMLSelectElement>("#device-picker")!;
 const ctx = canvas.getContext("2d")!;
 
+// The display stays at full camera resolution, but MediaPipe only needs to
+// see a small frame to find landmarks — inference cost scales with input
+// pixel count, and 1280x720 into the model is most of our latency budget.
+const DETECT_WIDTH = 480;
+const detectCanvas = document.createElement("canvas");
+const detectCtx = detectCanvas.getContext("2d", { willReadFrequently: true })!;
+
 function resizeCanvasToVideo() {
   canvas.width = video.videoWidth || window.innerWidth;
   canvas.height = video.videoHeight || window.innerHeight;
+
+  const aspect = canvas.height / canvas.width || 9 / 16;
+  detectCanvas.width = DETECT_WIDTH;
+  detectCanvas.height = Math.round(DETECT_WIDTH * aspect);
 }
 
 async function main() {
@@ -40,8 +51,9 @@ async function main() {
 
     if (!detecting && video.readyState >= 2) {
       detecting = true;
+      detectCtx.drawImage(video, 0, 0, detectCanvas.width, detectCanvas.height);
       const t0 = performance.now();
-      const result = detectHands(video, now);
+      const result = detectHands(detectCanvas, now);
       lastLatencyMs = performance.now() - t0;
       drawHandLandmarks(ctx, result, canvas.width, canvas.height);
       detecting = false;

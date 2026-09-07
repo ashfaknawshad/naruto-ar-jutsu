@@ -5,6 +5,9 @@ front of a camera and a jutsu effect (Rasengan, Sharingan, Chidori, ...)
 appears anchored to your hand. Runs entirely client-side — a laptop webcam
 or a phone camera, no server, no install beyond a browser.
 
+**Live:** https://ashfaknawshad.github.io/naruto-ar-jutsu/ — auto-deployed
+from `master` via GitHub Actions, so it always reflects the latest commit.
+
 Full design doc: [naruto-jutsu-ar-project-plan.md](naruto-jutsu-ar-project-plan.md)
 (visitor experience, jutsu catalogue, booth setup, ethics).
 Solo execution plan: [SOLO-PLAN.md](SOLO-PLAN.md) (stack decision, architecture,
@@ -58,9 +61,10 @@ classifier generalises instead of overfitting to one person. If you're
 helping with this, thank you — here's how.
 
 **1. Record your seals.**
-Open the app with `?mode=record` appended — e.g. `https://<url>/?mode=record`
-(ask for the link, or run it locally per above). Use the reference chart
-above. For each seal:
+Open **https://ashfaknawshad.github.io/naruto-ar-jutsu/?mode=record** on
+your phone or laptop — nothing to install, just allow camera access. The
+seal chart above is shown right in the app (top-right, toggle with the
+"Hide/Show seal chart" button if it's in the way). For each seal:
 
 - Type your name once (top-left field) — it stays saved in your browser.
 - Pick the seal from the dropdown.

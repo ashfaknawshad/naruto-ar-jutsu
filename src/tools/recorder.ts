@@ -106,6 +106,18 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
   startBtn.textContent = "Start (Space)";
   startBtn.addEventListener("click", () => beginRep());
 
+  const chartImg = document.createElement("img");
+  chartImg.src = `${import.meta.env.BASE_URL}image.png`;
+  chartImg.alt = "Reference chart of the 12 hand seals";
+  chartImg.className = "reference-chart visible"; // shown by default — friends need this to know what to record
+
+  const chartBtn = document.createElement("button");
+  chartBtn.textContent = "Hide seal chart";
+  chartBtn.addEventListener("click", () => {
+    const visible = chartImg.classList.toggle("visible");
+    chartBtn.textContent = visible ? "Hide seal chart" : "Show seal chart";
+  });
+
   const undoBtn = document.createElement("button");
   undoBtn.textContent = "Undo last take (Backspace)";
   undoBtn.disabled = true;
@@ -133,7 +145,7 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
     renderCounts();
   });
 
-  buttons.append(startBtn, undoBtn, downloadBtn, clearBtn);
+  buttons.append(startBtn, chartBtn, undoBtn, downloadBtn, clearBtn);
   panel.append(
     labelRow("Name:", nameInput),
     labelRow("Label:", labelSelect),
@@ -143,6 +155,7 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
     buttons,
   );
   document.querySelector("#app")!.appendChild(panel);
+  document.querySelector("#app")!.appendChild(chartImg);
 
   const countdownOverlay = document.createElement("div");
   countdownOverlay.className = "recorder-countdown";

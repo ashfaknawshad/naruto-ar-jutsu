@@ -5,9 +5,10 @@ import {
 } from "@mediapipe/tasks-vision";
 
 // Self-hosted so the booth (and this flaky library wifi) never depends on
-// jsdelivr/googleapis being reachable at runtime.
-const WASM_BASE = "/mediapipe/wasm";
-const MODEL_URL = "/models/hand_landmarker.task";
+// jsdelivr/googleapis being reachable at runtime. BASE_URL accounts for
+// GitHub Pages serving the build from /naruto-ar-jutsu/ rather than root.
+const WASM_BASE = `${import.meta.env.BASE_URL}mediapipe/wasm`;
+const MODEL_URL = `${import.meta.env.BASE_URL}models/hand_landmarker.task`;
 
 let landmarker: HandLandmarker | null = null;
 

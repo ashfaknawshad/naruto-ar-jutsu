@@ -174,3 +174,27 @@ html, body {
   text-shadow: 0 0 24px rgba(255, 93, 93, 0.8);
   font-size: 10vw;
 }
+
+.reference-chart {
+  position: absolute;
+  top: 48px;
+  right: 8px;
+  width: min(420px, 60vw);
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+  z-index: 15;
+  display: none;
+  background: #111;
+}
+
+.reference-chart.visible {
+  display: block;
+}
+
+@media (max-width: 700px) {
+  .reference-chart {
+    width: min(320px, 55vw);
+    max-height: 45vh;
+    object-fit: contain;
+  }
+}

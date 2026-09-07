@@ -4,12 +4,10 @@ import {
   type HandLandmarkerResult,
 } from "@mediapipe/tasks-vision";
 
-// TODO(day 10/11): download these into public/models/ and point at local
-// paths so the booth doesn't depend on venue wifi.
-const WASM_BASE =
-  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm";
-const MODEL_URL =
-  "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+// Self-hosted so the booth (and this flaky library wifi) never depends on
+// jsdelivr/googleapis being reachable at runtime.
+const WASM_BASE = "/mediapipe/wasm";
+const MODEL_URL = "/models/hand_landmarker.task";
 
 let landmarker: HandLandmarker | null = null;
 

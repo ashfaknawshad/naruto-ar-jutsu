@@ -4,6 +4,7 @@ import { buildFeatureVector, FEATURE_LENGTH } from "../perception/features";
 import { ALL_LABELS, type Label } from "../data/seals";
 
 const STORAGE_KEY = "kekkai-dataset-v1";
+const RECORDER_NAME_KEY = "kekkai-recorder-name";
 const COUNTDOWN_MS = 3000; // time to get both hands into position, hands-free
 const CAPTURE_MS = 2000; // burst length once countdown hits zero
 const REST_MS = 900; // pause between reps when auto-repeat is on
@@ -11,6 +12,9 @@ const REST_MS = 900; // pause between reps when auto-repeat is on
 interface Sample {
   label: Label;
   features: number[];
+  /** Who this rep was recorded from — needed to split train/test by person
+   * rather than by frame (frame-level splits leak and inflate accuracy). */
+  person: string;
 }
 
 interface Dataset {
@@ -59,6 +63,15 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
   const panel = document.createElement("div");
   panel.className = "recorder-panel";
 
+  const nameInput = document.createElement("input");
+  nameInput.type = "text";
+  nameInput.placeholder = "your name";
+  nameInput.className = "recorder-select";
+  nameInput.value = localStorage.getItem(RECORDER_NAME_KEY) ?? "";
+  nameInput.addEventListener("input", () => {
+    localStorage.setItem(RECORDER_NAME_KEY, nameInput.value.trim());
+  });
+
   const labelSelect = document.createElement("select");
   labelSelect.className = "recorder-select";
   for (const label of ALL_LABELS) {
@@ -100,7 +113,8 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `kekkai-dataset-${Date.now()}.json`;
+    const who = nameInput.value.trim().replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "unknown";
+    a.download = `kekkai-dataset-${who}-${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   });
@@ -115,7 +129,14 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
   });
 
   buttons.append(startBtn, downloadBtn, clearBtn);
-  panel.append(labelRow("Label:", labelSelect), labelRow("", loopLabel), status, counts, buttons);
+  panel.append(
+    labelRow("Name:", nameInput),
+    labelRow("Label:", labelSelect),
+    labelRow("", loopLabel),
+    status,
+    counts,
+    buttons,
+  );
   document.querySelector("#app")!.appendChild(panel);
 
   const countdownOverlay = document.createElement("div");
@@ -143,7 +164,8 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
     }
     const total = document.createElement("div");
     total.className = "recorder-count-total";
-    total.textContent = `total: ${dataset.samples.length}`;
+    const people = new Set(dataset.samples.map((s) => s.person));
+    total.textContent = `total: ${dataset.samples.length} (${people.size} ${people.size === 1 ? "person" : "people"})`;
     counts.appendChild(total);
   }
   renderCounts();
@@ -158,6 +180,11 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
 
   function beginRep() {
     if (phase !== "idle" && phase !== "resting") return;
+    if (!nameInput.value.trim()) {
+      status.textContent = "enter your name first (top-left field) so samples can be split by person";
+      nameInput.focus();
+      return;
+    }
     phase = "countdown";
     phaseEndsAt = performance.now() + COUNTDOWN_MS;
   }
@@ -218,7 +245,11 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
 
       if (phase === "capturing") {
         const features = buildFeatureVector(result);
-        dataset.samples.push({ label: labelSelect.value as Label, features: Array.from(features) });
+        dataset.samples.push({
+          label: labelSelect.value as Label,
+          features: Array.from(features),
+          person: nameInput.value.trim(),
+        });
         framesThisRep++;
       }
 

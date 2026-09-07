@@ -118,3 +118,43 @@ export function buildFeatureVector(result: HandLandmarkerResult): Float32Array {
 
   return vector;
 }
+
+/**
+ * The horizontal-mirror twin of a feature vector — what the same physical
+ * pose would look like performed with the opposite handedness (or seen in a
+ * mirror). This is what makes "someone recorded a seal mirror-flipped, on
+ * purpose or by beginner mistake" a non-issue rather than noise: a mirrored
+ * seal is a real, valid way a visitor's hands can look, so training on both
+ * orientations (see train/train_mlp.py) makes the classifier invariant to
+ * it instead of quietly overfitting to whichever chirality happened to get
+ * recorded.
+ *
+ * Derivation: negating every landmark's raw x before normalizeHand() is
+ * algebraically equivalent to negating just the x component of its already-
+ * normalized output and leaving y/z untouched (the rotation-normalization
+ * step's cos/sin terms work out so the two commute) — so this function can
+ * operate directly on stored feature vectors without the original landmarks.
+ * Left/right hand slots swap because a mirrored right hand looks like a left
+ * hand. The two cross-hand distance features are magnitudes (hypot), which
+ * don't change under a reflection, so they're copied as-is; relative
+ * rotation is a signed angle and flips sign.
+ */
+export function mirrorFeatures(vec: ArrayLike<number>): Float32Array {
+  const out = new Float32Array(FEATURE_LENGTH);
+  for (let i = 0; i < NUM_LANDMARKS; i++) {
+    out[LEFT_OFFSET + i * 3 + 0] = -vec[RIGHT_OFFSET + i * 3 + 0];
+    out[LEFT_OFFSET + i * 3 + 1] = vec[RIGHT_OFFSET + i * 3 + 1];
+    out[LEFT_OFFSET + i * 3 + 2] = vec[RIGHT_OFFSET + i * 3 + 2];
+    out[RIGHT_OFFSET + i * 3 + 0] = -vec[LEFT_OFFSET + i * 3 + 0];
+    out[RIGHT_OFFSET + i * 3 + 1] = vec[LEFT_OFFSET + i * 3 + 1];
+    out[RIGHT_OFFSET + i * 3 + 2] = vec[LEFT_OFFSET + i * 3 + 2];
+  }
+  out[PRESENCE_OFFSET] = vec[PRESENCE_OFFSET + 1];
+  out[PRESENCE_OFFSET + 1] = vec[PRESENCE_OFFSET];
+  out[WRIST_DIST_OFFSET] = vec[WRIST_DIST_OFFSET];
+  out[RELATIVE_ROTATION_OFFSET] = -vec[RELATIVE_ROTATION_OFFSET];
+  for (let i = 0; i < FINGERTIPS.length; i++) {
+    out[FINGERTIP_DIST_OFFSET + i] = vec[FINGERTIP_DIST_OFFSET + i];
+  }
+  return out;
+}

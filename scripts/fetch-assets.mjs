@@ -2,9 +2,11 @@
 // and public/models/hand_landmarker.task (downloaded once, with resume —
 // this network has been observed to stall mid-download, so we retry with
 // a Range request until the file matches its expected size).
-import { existsSync, mkdirSync, copyFileSync, readdirSync, statSync, createWriteStream } from "node:fs";
+import { existsSync, mkdirSync, copyFileSync, readdirSync, statSync, createWriteStream, truncateSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -26,7 +28,7 @@ async function downloadWithResume(url, dest, maxAttempts = 15) {
   const expectedSize = Number(head.headers.get("content-length"));
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const have = existsSync(dest) ? statSync(dest).size : 0;
+    let have = existsSync(dest) ? statSync(dest).size : 0;
     if (have >= expectedSize && expectedSize > 0) {
       console.log(`model already complete (${have} bytes) -> ${dest}`);
       return;
@@ -35,30 +37,29 @@ async function downloadWithResume(url, dest, maxAttempts = 15) {
     const res = await fetch(url, { headers: have > 0 ? { Range: `bytes=${have}-` } : {} });
     if (!res.ok && res.status !== 206) throw new Error(`download failed: ${res.status}`);
 
-    await new Promise((resolve, reject) => {
-      const out = createWriteStream(dest, { flags: have > 0 ? "a" : "w" });
-      res.body.pipeTo(
-        new WritableStream({
-          write(chunk) {
-            out.write(chunk);
-          },
-          close() {
-            out.end();
-            resolve();
-          },
-          abort(err) {
-            out.end();
-            reject(err);
-          },
-        }),
-      ).catch(reject);
-    }).catch(() => {
+    // The server may not honour Range (some CDNs/proxies ignore it and send
+    // 200 + the full body) — appending in that case would duplicate data,
+    // so only append when the server actually confirmed a partial response.
+    const appending = have > 0 && res.status === 206;
+    if (have > 0 && !appending) {
+      truncateSync(dest, 0);
+      have = 0;
+    }
+
+    try {
+      await pipeline(Readable.fromWeb(res.body), createWriteStream(dest, { flags: appending ? "a" : "w" }));
+    } catch {
       // Network stalled mid-stream — loop and resume from wherever we got to.
-    });
+    }
 
     const now = statSync(dest).size;
     console.log(`  attempt ${attempt}: ${now}/${expectedSize} bytes`);
-    if (now >= expectedSize) break;
+    if (now === expectedSize) break;
+    if (now > expectedSize) {
+      // Shouldn't happen given the truncate-on-mismatch guard above, but
+      // never leave a corrupt oversized file behind.
+      truncateSync(dest, 0);
+    }
   }
 
   const final = statSync(dest).size;

@@ -32,8 +32,10 @@ async function main() {
   video.addEventListener("loadedmetadata", resizeCanvasToVideo);
   resizeCanvasToVideo();
 
-  hud.textContent = "loading hand model...";
-  await initHandTracker();
+  hud.textContent = "downloading hand-tracking model (~19MB, first visit only)...";
+  await initHandTracker((loadedBytes) => {
+    hud.textContent = `downloading hand-tracking model: ${(loadedBytes / 1_000_000).toFixed(1)}MB (first visit only — cached after)`;
+  });
 
   const deps = { video, canvas, ctx, detectCanvas, detectCtx, hud };
   const mode = new URLSearchParams(location.search).get("mode");

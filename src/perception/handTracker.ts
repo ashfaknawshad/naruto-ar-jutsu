@@ -12,20 +12,57 @@ const MODEL_URL = `${import.meta.env.BASE_URL}models/hand_landmarker.task`;
 
 let landmarker: HandLandmarker | null = null;
 
-export async function initHandTracker(): Promise<HandLandmarker> {
-  const fileset = await FilesetResolver.forVisionTasks(WASM_BASE);
-  landmarker = await HandLandmarker.createFromOptions(fileset, {
-    baseOptions: {
-      modelAssetPath: MODEL_URL,
-      delegate: "GPU",
-    },
-    runningMode: "VIDEO",
-    numHands: 2,
-    minHandDetectionConfidence: 0.5,
-    minHandPresenceConfidence: 0.5,
-    minTrackingConfidence: 0.5,
+/**
+ * Wraps window.fetch for the duration of `fn` so downloads of the wasm
+ * runtime + model (~19MB combined, on a fresh visit) report bytes received
+ * as they stream in. Without this the loading screen sits on one static
+ * message for however long the download takes, which reads as hung rather
+ * than working — especially on mobile data.
+ */
+async function withFetchProgress<T>(onProgress: (loadedBytes: number) => void, fn: () => Promise<T>): Promise<T> {
+  const originalFetch = window.fetch.bind(window);
+  let loaded = 0;
+  window.fetch = async (...args) => {
+    const res = await originalFetch(...args);
+    if (!res.body || !res.headers.get("content-length")) return res;
+    const reader = res.body.getReader();
+    const stream = new ReadableStream({
+      async pull(controller) {
+        const { done, value } = await reader.read();
+        if (done) {
+          controller.close();
+          return;
+        }
+        loaded += value.byteLength;
+        onProgress(loaded);
+        controller.enqueue(value);
+      },
+    });
+    return new Response(stream, { headers: res.headers, status: res.status, statusText: res.statusText });
+  };
+  try {
+    return await fn();
+  } finally {
+    window.fetch = originalFetch;
+  }
+}
+
+export async function initHandTracker(onProgress?: (loadedBytes: number) => void): Promise<HandLandmarker> {
+  return withFetchProgress(onProgress ?? (() => {}), async () => {
+    const fileset = await FilesetResolver.forVisionTasks(WASM_BASE);
+    landmarker = await HandLandmarker.createFromOptions(fileset, {
+      baseOptions: {
+        modelAssetPath: MODEL_URL,
+        delegate: "GPU",
+      },
+      runningMode: "VIDEO",
+      numHands: 2,
+      minHandDetectionConfidence: 0.5,
+      minHandPresenceConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+    });
+    return landmarker;
   });
-  return landmarker;
 }
 
 /**

@@ -85,7 +85,7 @@ export function runLive({ video, canvas, stageCanvas, ctx, detectCanvas, detectC
         const anchor = computeHandAnchor(primaryHand);
         const [sx, sy, sz] = positionFilter.filter(anchor.x, anchor.y, anchor.z, now);
         const scale = scaleFilter.filter(anchor.scale, now);
-        stage.setAnchor(sx, sy, sz, scale, true, primaryHand);
+        stage.setAnchor(sx, sy, sz, scale, true, primaryHand.landmarks, anchor.normal);
         anchorText = `raw(${anchor.x.toFixed(2)},${anchor.y.toFixed(2)}) filtered(${sx.toFixed(2)},${sy.toFixed(2)}) scale ${scale.toFixed(3)}`;
       } else {
         framesSinceHandSeen++;

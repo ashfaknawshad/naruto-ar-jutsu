@@ -13,14 +13,33 @@ export interface Stage {
    * finger-occlusion mask from all 21 points (same 0-1 coordinate space);
    * omit it (or pass an empty array) to hide the mask.
    */
-  setAnchor(x: number, y: number, z: number, scale: number, visible: boolean, landmarks?: Point2D[]): void;
+  setAnchor(
+    x: number,
+    y: number,
+    z: number,
+    scale: number,
+    visible: boolean,
+    landmarks?: Point2D[],
+    palmNormal?: { x: number; y: number },
+  ): void;
   render(): void;
 }
 
-// Converts the wrist-to-MCP scale proxy (typically ~0.1-0.3 for a hand at
-// conversational distance) into a world-space radius that roughly fills a
-// palm. Eyeballed against the debug sphere in Day 4 testing.
-const RADIUS_MULTIPLIER = 0.5;
+// Turns the anchor's scale (how much of the frame a palm-sized object spans
+// at this distance) into a world-space radius.
+//
+// Derived rather than eyeballed, since guessing this got the size wrong
+// twice: the visible sphere's diameter is 2 * radius * 0.95 (the mid
+// shell's own local radius), and a Rasengan should read as slightly bigger
+// than the palm holding it (~1.2x). Solving 1.9 * MULTIPLIER = 1.2 gives
+// ~0.63.
+const RADIUS_MULTIPLIER = 0.65;
+
+// How far along the palm normal to push the effect, as a fraction of its
+// own radius, so it rests on top of the palm instead of being centred in
+// the palm plane (half-buried in the hand) — most visible on a cupped hand,
+// where it should look like it's sitting in the cup.
+const PALM_OFFSET = 0.55;
 
 // How far the hull is pushed outward from its own centroid — "slightly
 // dilated" per the design plan, so the mask sits just past the fingers'
@@ -104,14 +123,26 @@ export function createStage(canvas: HTMLCanvasElement, width: number, height: nu
     occlusionMesh.visible = true;
   }
 
-  function setAnchor(x: number, y: number, _z: number, scale: number, visible: boolean, landmarks?: Point2D[]) {
+  function setAnchor(
+    x: number,
+    y: number,
+    _z: number,
+    scale: number,
+    visible: boolean,
+    landmarks?: Point2D[],
+    palmNormal?: { x: number; y: number },
+  ) {
     rasengan.group.visible = visible;
     if (!visible) {
       occlusionMesh.visible = false;
       return;
     }
-    rasengan.group.position.set((x - 0.5) * aspect, -(y - 0.5), 0);
     const effectRadius = scale * RADIUS_MULTIPLIER;
+    // Normal's y is negated for the same reason the anchor's is: image
+    // coordinates grow downward, world coordinates grow upward.
+    const offsetX = (palmNormal?.x ?? 0) * effectRadius * PALM_OFFSET;
+    const offsetY = -(palmNormal?.y ?? 0) * effectRadius * PALM_OFFSET;
+    rasengan.group.position.set((x - 0.5) * aspect + offsetX, -(y - 0.5) + offsetY, 0);
     rasengan.group.scale.setScalar(effectRadius);
 
     if (landmarks && landmarks.length >= 3) {

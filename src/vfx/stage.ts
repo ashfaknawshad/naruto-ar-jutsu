@@ -19,7 +19,7 @@ export interface Stage {
 // ~0.1-0.3 for a hand at conversational distance) into a sphere radius
 // that roughly covers a palm. Eyeballed, will get revisited once the real
 // Rasengan shader replaces this debug placeholder in Day 5.
-const RADIUS_MULTIPLIER = 1.4;
+const RADIUS_MULTIPLIER = 0.5;
 
 /**
  * A minimal Three.js scene: an orthographic camera mapped 1:1 onto the

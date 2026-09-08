@@ -43,6 +43,7 @@ export function runLive({ video, canvas, stageCanvas, ctx, detectCanvas, detectC
   const fpsWindow: number[] = [];
   let lastLatencyMs = 0;
   let heldText = "—";
+  let anchorText = "no hand";
 
   function loop() {
     const now = performance.now();
@@ -75,9 +76,21 @@ export function runLive({ video, canvas, stageCanvas, ctx, detectCanvas, detectC
       if (primaryHand) {
         framesSinceHandSeen = 0;
         const anchor = computeHandAnchor(primaryHand);
+
+        // DEBUG (Day 4 anchoring check): a magenta dot at the raw anchor,
+        // drawn on the 2D overlay whose coordinate mapping is already known
+        // to be correct (drawHandLandmarks uses it too) — if this dot sits
+        // on the palm but the sphere doesn't, the bug is in the Three.js
+        // stage's coordinate mapping, not in computeHandAnchor.
+        ctx.beginPath();
+        ctx.arc(anchor.x * canvas.width, anchor.y * canvas.height, 8, 0, Math.PI * 2);
+        ctx.fillStyle = "#ff00ff";
+        ctx.fill();
+
         const [sx, sy, sz] = positionFilter.filter(anchor.x, anchor.y, anchor.z, now);
         const scale = scaleFilter.filter(anchor.scale, now);
         stage.setAnchor(sx, sy, sz, scale, true);
+        anchorText = `raw(${anchor.x.toFixed(2)},${anchor.y.toFixed(2)}) filtered(${sx.toFixed(2)},${sy.toFixed(2)}) scale ${scale.toFixed(3)}`;
       } else {
         framesSinceHandSeen++;
         if (framesSinceHandSeen > RESET_AFTER_MISSING_FRAMES) {
@@ -85,6 +98,7 @@ export function runLive({ video, canvas, stageCanvas, ctx, detectCanvas, detectC
           scaleFilter.reset();
         }
         stage.setAnchor(0, 0, 0, 0, false);
+        anchorText = "no hand";
       }
 
       detecting = false;
@@ -92,7 +106,7 @@ export function runLive({ video, canvas, stageCanvas, ctx, detectCanvas, detectC
 
     stage.render();
 
-    hud.textContent = `fps: ${fps.toFixed(0)}\nhand detect: ${lastLatencyMs.toFixed(1)}ms\nseal: ${heldText}`;
+    hud.textContent = `fps: ${fps.toFixed(0)}\nhand detect: ${lastLatencyMs.toFixed(1)}ms\nseal: ${heldText}\nanchor: ${anchorText}`;
 
     requestAnimationFrame(loop);
   }

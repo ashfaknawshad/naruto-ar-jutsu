@@ -39,17 +39,25 @@ function polygonArea2D(points: { x: number; y: number }[]): number {
  * depth camera needed, see the design plan §4.3), and the palm normal
  * (which way the hand is facing, for orienting directional effects later).
  *
- * Scale used to be a single wrist-to-middle-MCP distance. That foreshortens
- * badly under rotation — cup your palm toward the camera (a real seal
- * pose) and that one bone's 2D projection shrinks even though the hand
- * hasn't moved further away, so the effect would shrink with it. MediaPipe
- * itself sidesteps exactly this by detecting palms via a bounding region
- * over the wrist + all 5 MCP knuckles rather than any single bone, because
- * that region is far more rigid under articulation. Following the same
- * idea: scale here is sqrt(palm polygon area) over those 5 points, not one
- * edge — a rotation that foreshortens one edge doesn't collapse the whole
- * polygon's area the same way, since the other edges span different
- * directions.
+ * Scale went through two versions before this one:
+ *   1. A single wrist-to-middle-MCP distance — foreshortens badly under
+ *      rotation, since one bone's 2D projection shrinks under a rotation
+ *      that doesn't actually move the hand further away.
+ *   2. sqrt(palm polygon area) over the wrist + 5 MCPs, matching how
+ *      MediaPipe's own palm detector favours that rigid region over any
+ *      single bone. This fixed in-plane foreshortening (e.g. cupping the
+ *      palm so it still faces the camera) but not out-of-plane tilt —
+ *      a flat shape's projected *area* shrinks under any tilt away from
+ *      facing the camera, by basic projective geometry, regardless of
+ *      whether you measure it as one edge or as area. Confirmed live: the
+ *      effect still shrank hard when the palm turned to a more oblique
+ *      angle, not just when cupped toward the camera.
+ * This version corrects for that directly using the palm normal (computed
+ * below) we already had sitting unused: dividing the raw projected scale
+ * by how much the palm faces the camera (|normal.z|, clamped so a
+ * near-edge-on hand — where this estimate is inherently unreliable anyway
+ * — doesn't blow the scale up toward infinity) recovers an estimate of the
+ * palm's true, untilted size.
  */
 export function computeHandAnchor(landmarks: NormalizedLandmark[]): HandAnchor {
   let x = 0, y = 0, z = 0;
@@ -64,7 +72,7 @@ export function computeHandAnchor(landmarks: NormalizedLandmark[]): HandAnchor {
 
   const wrist = landmarks[WRIST];
   const palmPoints = PALM_LANDMARKS.map((i) => landmarks[i]);
-  const scale = Math.sqrt(polygonArea2D(palmPoints)) || 1e-6;
+  const rawScale = Math.sqrt(polygonArea2D(palmPoints)) || 1e-6;
 
   // Palm normal via the cross product of two edges of the wrist/index-MCP/
   // pinky-MCP triangle — three points that stay roughly coplanar with the
@@ -74,6 +82,10 @@ export function computeHandAnchor(landmarks: NormalizedLandmark[]): HandAnchor {
   const ax = indexMcp.x - wrist.x, ay = indexMcp.y - wrist.y, az = indexMcp.z - wrist.z;
   const bx = pinkyMcp.x - wrist.x, by = pinkyMcp.y - wrist.y, bz = pinkyMcp.z - wrist.z;
   const normal = normalize(ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx);
+
+  const MIN_FACING = 0.35;
+  const facing = Math.max(Math.abs(normal.z), MIN_FACING);
+  const scale = rawScale / facing;
 
   return { x, y, z, scale, normal };
 }

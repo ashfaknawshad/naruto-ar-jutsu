@@ -4,7 +4,7 @@ import { Group, Mesh, BoxGeometry, ShaderMaterial, AdditiveBlending, DoubleSide 
 // let the vertex shader below bend it into a smooth curve rather than a
 // jagged zigzag. Shared across every ribbon instance; only the material
 // (which carries each ribbon's own phase/speed) differs per instance.
-const RIBBON_GEOMETRY = new BoxGeometry(0.03, 0.03, 1.5, 1, 1, 32);
+const RIBBON_GEOMETRY = new BoxGeometry(0.05, 0.05, 1.7, 1, 1, 32);
 
 const VERTEX_SHADER = /* glsl */ `
 uniform float uTime;
@@ -13,8 +13,11 @@ varying float vT;
 
 void main() {
   vT = position.z;
-  float wave = sin(position.z * 6.0 + uTime * 3.0 + uPhase) * 0.16;
-  float wave2 = cos(position.z * 4.0 - uTime * 2.2 + uPhase) * 0.11;
+  // Amplitude big enough to bow the curve out to (and past) the aura's
+  // radius — at the previous, much smaller amplitude the ribbons stayed
+  // close to a straight line through the centre and barely read at all.
+  float wave = sin(position.z * 5.0 + uTime * 3.0 + uPhase) * 0.45;
+  float wave2 = cos(position.z * 3.5 - uTime * 2.2 + uPhase) * 0.32;
   vec3 displaced = vec3(position.x + wave, position.y + wave2, position.z);
   vec4 mvPosition = modelViewMatrix * vec4(displaced, 1.0);
   gl_Position = projectionMatrix * mvPosition;
@@ -27,12 +30,12 @@ uniform float uPhase;
 varying float vT;
 
 void main() {
-  float pulse = 0.6 + 0.4 * sin(vT * 8.0 - uTime * 4.0 + uPhase);
-  vec3 color = mix(vec3(0.3, 0.7, 1.0), vec3(0.88, 0.98, 1.0), pulse);
+  float pulse = 0.7 + 0.3 * sin(vT * 8.0 - uTime * 4.0 + uPhase);
+  vec3 color = mix(vec3(0.35, 0.75, 1.0), vec3(0.9, 0.99, 1.0), pulse);
   // Fade the last ~25% toward each tip so ribbons taper instead of
   // presenting a hard-edged cut end.
-  float edgeFade = 1.0 - smoothstep(0.55, 0.75, abs(vT));
-  gl_FragColor = vec4(color, pulse * edgeFade);
+  float edgeFade = 1.0 - smoothstep(0.6, 0.85, abs(vT));
+  gl_FragColor = vec4(color, clamp(pulse * edgeFade * 1.3, 0.0, 1.0));
 }
 `;
 
@@ -50,7 +53,7 @@ export interface StreakRibbons {
  * energy streaks. Technique adapted from a public three.js Rasengan demo
  * (github.com/SuboptimalEng/three-js-games/tree/main/05-naruto-rasengan).
  */
-export function createStreakRibbons(count = 10): StreakRibbons {
+export function createStreakRibbons(count = 12): StreakRibbons {
   const group = new Group();
   const materials: ShaderMaterial[] = [];
   const speeds: number[] = [];

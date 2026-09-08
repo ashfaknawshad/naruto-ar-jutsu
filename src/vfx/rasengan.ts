@@ -32,16 +32,20 @@ void main() {
 
 // Outer aura — rendered BackSide so it glows around the silhouette rather
 // than covering the front face, a cheap way to get a soft halo without a
-// real bloom post-pass (that's Day 7's job).
+// real bloom post-pass (that's Day 7's job). Rim-only: abs() on the dot
+// product (fresnel is about how grazing the surface is, not which side is
+// being rendered) plus a hard clamp before pow(), and a fairly steep
+// falloff power — the previous version was unclamped and washed the whole
+// silhouette into a flat filled disc instead of a thin glowing edge.
 const AURA_FRAGMENT = /* glsl */ `
 varying vec3 vNormal;
 varying vec3 vViewPosition;
 
 void main() {
   vec3 viewDir = normalize(vViewPosition);
-  float fresnel = pow(0.55 - dot(vNormal, viewDir) * 0.5, 2.2);
+  float fresnel = pow(clamp(1.0 - abs(dot(vNormal, viewDir)), 0.0, 1.0), 3.5);
   vec3 color = vec3(0.45, 0.8, 1.0);
-  gl_FragColor = vec4(color, clamp(fresnel, 0.0, 1.0));
+  gl_FragColor = vec4(color, fresnel * 0.55);
 }
 `;
 

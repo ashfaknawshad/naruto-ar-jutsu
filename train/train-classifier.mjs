@@ -115,14 +115,34 @@ function smallRotate(rng, vec, maxRadians = 0.12) {
   return out;
 }
 
+// none/transition have far fewer raw recordings than any seal (~207/217 vs
+// 600-2000+) — a real session found this matters: ambiguous poses like a
+// raised fist or a hand near the face were confidently misclassified as a
+// seal instead of none, and person-grouped CV independently flagged
+// ox<->transition as the single largest confusion in the whole matrix.
+// Even split evenly, 4x augmentation leaves none/transition proportionally
+// tiny. Boost their augmented-jitter reps so post-augmentation volume is
+// roughly comparable to an average seal's, instead of oversampling by
+// literal duplication (which would just be the same 207 poses repeated —
+// each extra rep here draws fresh random jitter/rotation, so it's real
+// synthetic variety, not copies).
+const BOOST_LABELS = new Set(["none", "transition"]);
+const NORMAL_JITTER_REPS = 1;
+const BOOST_JITTER_REPS = 7; // -> 2 + 7*2 = 16 variants/sample, vs 2 + 1*2 = 4 normally
+
 function augment(rng, samples) {
   const out = [];
   for (const s of samples) {
     const base = Float64Array.from(s.features);
+    const mirrored = mirrorFeatures(base);
     out.push({ label: s.label, features: base });
-    out.push({ label: s.label, features: mirrorFeatures(base) });
-    out.push({ label: s.label, features: jitter(rng, smallRotate(rng, base)) });
-    out.push({ label: s.label, features: jitter(rng, smallRotate(rng, mirrorFeatures(base))) });
+    out.push({ label: s.label, features: mirrored });
+
+    const reps = BOOST_LABELS.has(s.label) ? BOOST_JITTER_REPS : NORMAL_JITTER_REPS;
+    for (let i = 0; i < reps; i++) {
+      out.push({ label: s.label, features: jitter(rng, smallRotate(rng, base)) });
+      out.push({ label: s.label, features: jitter(rng, smallRotate(rng, mirrored)) });
+    }
   }
   return out;
 }

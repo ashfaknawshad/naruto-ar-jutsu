@@ -125,10 +125,12 @@ export function computeHandAnchor({ landmarks, worldLandmarks }: HandSample): Ha
   const ax = indexMcp.x - wrist.x, ay = indexMcp.y - wrist.y, az = indexMcp.z - wrist.z;
   const bx = pinkyMcp.x - wrist.x, by = pinkyMcp.y - wrist.y, bz = pinkyMcp.z - wrist.z;
   let normal = normalize(ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx);
-  // The cross product's sign flips between left and right hands, which would
-  // push the effect *into* the hand for one of them. MediaPipe's z grows
-  // away from the camera, so forcing z <= 0 makes this consistently point
-  // out of the palm toward the viewer for either hand.
+  // The cross product's sign flips between left and right hands. Forcing
+  // z <= 0 (MediaPipe's z grows away from the camera) at least makes it
+  // consistently camera-facing for either hand. Note this only normalises
+  // the *convention*, it doesn't make the x/y direction trustworthy — it's
+  // derived from MediaPipe's noisy z, so nothing positional should depend
+  // on it. stage.ts uses only |z| as a tilt magnitude for that reason.
   if (normal.z > 0) normal = { x: -normal.x, y: -normal.y, z: -normal.z };
 
   const rawScale = projectionScale(landmarks, worldLandmarks) * REFERENCE_PALM_METRES;

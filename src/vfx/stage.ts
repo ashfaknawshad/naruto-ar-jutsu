@@ -20,7 +20,7 @@ export interface Stage {
     scale: number,
     visible: boolean,
     landmarks?: Point2D[],
-    palmNormal?: { x: number; y: number },
+    palmNormal?: { x: number; y: number; z: number },
   ): void;
   render(): void;
 }
@@ -35,11 +35,19 @@ export interface Stage {
 // ~0.63.
 const RADIUS_MULTIPLIER = 0.65;
 
-// How far along the palm normal to push the effect, as a fraction of its
-// own radius, so it rests on top of the palm instead of being centred in
-// the palm plane (half-buried in the hand) — most visible on a cupped hand,
-// where it should look like it's sitting in the cup.
-const PALM_OFFSET = 0.55;
+// How far to lift the effect above the palm, as a fraction of its own
+// radius, so it rests in a cupped hand rather than being centred in the
+// palm plane (half-buried in the hand).
+//
+// Deliberately a straight screen-up offset rather than a push along the
+// palm normal's x/y. The normal's direction depends on a cross product
+// whose sign flips between left and right hands, and disambiguating it via
+// the z component means hanging the direction on MediaPipe's noisiest
+// output — in testing that put the sphere *underneath* the hand. Screen-up
+// has no sign ambiguity, and matches where a held Rasengan actually sits
+// in every natural pose. The tilt factor keeps it centred (offset 0) when
+// the palm faces the camera, lifting it only as the hand cups over.
+const PALM_LIFT = 0.55;
 
 // How far the hull is pushed outward from its own centroid — "slightly
 // dilated" per the design plan, so the mask sits just past the fingers'
@@ -130,7 +138,7 @@ export function createStage(canvas: HTMLCanvasElement, width: number, height: nu
     scale: number,
     visible: boolean,
     landmarks?: Point2D[],
-    palmNormal?: { x: number; y: number },
+    palmNormal?: { x: number; y: number; z: number },
   ) {
     rasengan.group.visible = visible;
     if (!visible) {
@@ -138,11 +146,13 @@ export function createStage(canvas: HTMLCanvasElement, width: number, height: nu
       return;
     }
     const effectRadius = scale * RADIUS_MULTIPLIER;
-    // Normal's y is negated for the same reason the anchor's is: image
-    // coordinates grow downward, world coordinates grow upward.
-    const offsetX = (palmNormal?.x ?? 0) * effectRadius * PALM_OFFSET;
-    const offsetY = -(palmNormal?.y ?? 0) * effectRadius * PALM_OFFSET;
-    rasengan.group.position.set((x - 0.5) * aspect + offsetX, -(y - 0.5) + offsetY, 0);
+    // |normal.z| is ~1 when the palm faces the camera and falls toward 0 as
+    // it turns edge-on, so this lifts the effect only as the hand cups.
+    // Only the magnitude is used, never the normal's direction — see
+    // PALM_LIFT for why.
+    const tilt = 1 - Math.min(Math.abs(palmNormal?.z ?? 1), 1);
+    const lift = tilt * effectRadius * PALM_LIFT;
+    rasengan.group.position.set((x - 0.5) * aspect, -(y - 0.5) + lift, 0);
     rasengan.group.scale.setScalar(effectRadius);
 
     if (landmarks && landmarks.length >= 3) {

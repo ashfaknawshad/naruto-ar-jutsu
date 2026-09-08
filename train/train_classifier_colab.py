@@ -45,9 +45,17 @@ NON_PERSON = "transitions-and-none"
 # --- Load ---------------------------------------------------------------
 try:
     from google.colab import files
-    print("Select every file in datasets/raw/*.json (multi-select):")
+    print("Select every file in datasets/raw/*.json (multi-select) — non-.json files (e.g. README.md) are skipped automatically:")
     uploaded = files.upload()
-    raw_files = {name: json.loads(content) for name, content in uploaded.items()}
+    raw_files = {}
+    for name, content in uploaded.items():
+        if not name.endswith(".json"):
+            print(f"  skipping {name} (not a .json file)")
+            continue
+        try:
+            raw_files[name] = json.loads(content)
+        except json.JSONDecodeError:
+            print(f"  skipping {name} (not valid JSON)")
 except ImportError:
     # Local fallback, if you ever do get numpy/sklearn installed here.
     from pathlib import Path

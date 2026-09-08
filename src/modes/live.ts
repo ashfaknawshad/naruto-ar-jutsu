@@ -24,9 +24,16 @@ export function runLive({ video, canvas, stageCanvas, ctx, detectCanvas, detectC
   toggleBtn.className = "reference-chart-toggle";
   document.querySelector("#app")!.appendChild(toggleBtn);
 
-  const stage = createStage(stageCanvas, stageCanvas.width, stageCanvas.height);
-  let stageWidth = stageCanvas.width;
-  let stageHeight = stageCanvas.height;
+  // The stage's own resize() reads canvas.width/height (the 2D overlay,
+  // which only main.ts ever sets) to decide its target size — never
+  // stageCanvas's own buffer dimensions, which the renderer mutates itself
+  // by applying devicePixelRatio. Reading that back would misread the
+  // renderer's own write as "the video resized again" and trigger another
+  // resize, compounding every frame into a runaway canvas size (see the
+  // comment in main.ts's resizeCanvasToVideo for how this actually happened).
+  const stage = createStage(stageCanvas, canvas.width, canvas.height);
+  let stageWidth = canvas.width;
+  let stageHeight = canvas.height;
 
   // Position gets heavier smoothing than scale — a jittery radius reads as
   // "breathing", which is far less distracting than a jittery position,
@@ -53,9 +60,9 @@ export function runLive({ video, canvas, stageCanvas, ctx, detectCanvas, detectC
     if (fpsWindow.length > 30) fpsWindow.shift();
     const fps = fpsWindow.reduce((a, b) => a + b, 0) / fpsWindow.length;
 
-    if (stageCanvas.width !== stageWidth || stageCanvas.height !== stageHeight) {
-      stageWidth = stageCanvas.width;
-      stageHeight = stageCanvas.height;
+    if (canvas.width !== stageWidth || canvas.height !== stageHeight) {
+      stageWidth = canvas.width;
+      stageHeight = canvas.height;
       stage.resize(stageWidth, stageHeight);
     }
 

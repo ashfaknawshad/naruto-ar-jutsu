@@ -22,8 +22,13 @@ const detectCtx = detectCanvas.getContext("2d", { willReadFrequently: true })!;
 function resizeCanvasToVideo() {
   canvas.width = video.videoWidth || window.innerWidth;
   canvas.height = video.videoHeight || window.innerHeight;
-  stageCanvas.width = canvas.width;
-  stageCanvas.height = canvas.height;
+  // stageCanvas's buffer is deliberately NOT set here — Three.js's
+  // renderer owns that (see vfx/stage.ts's resize(), which applies
+  // devicePixelRatio itself). live.ts reads canvas.width/height, never
+  // stageCanvas's, to decide when to call stage.resize() — otherwise the
+  // renderer's own pixelRatio-scaled buffer write would be misread as
+  // "the video resized again", triggering another resize that scales it
+  // up again, compounding every frame into a runaway canvas size.
 
   const aspect = canvas.height / canvas.width || 9 / 16;
   detectCanvas.width = DETECT_WIDTH;

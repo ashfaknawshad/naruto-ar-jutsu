@@ -2,6 +2,7 @@ import { detectHands } from "../perception/handTracker";
 import { drawHandLandmarks } from "../perception/drawLandmarks";
 import { buildFeatureVector, FEATURE_LENGTH } from "../perception/features";
 import { ALL_LABELS, type Label } from "../data/seals";
+import { createReferenceChart } from "../ui/referenceChart";
 
 const STORAGE_KEY = "kekkai-dataset-v1";
 const RECORDER_NAME_KEY = "kekkai-recorder-name";
@@ -106,17 +107,8 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
   startBtn.textContent = "Start (Space)";
   startBtn.addEventListener("click", () => beginRep());
 
-  const chartImg = document.createElement("img");
-  chartImg.src = `${import.meta.env.BASE_URL}image.png`;
-  chartImg.alt = "Reference chart of the 12 hand seals";
-  chartImg.className = "reference-chart visible"; // shown by default — friends need this to know what to record
-
-  const chartBtn = document.createElement("button");
-  chartBtn.textContent = "Hide seal chart";
-  chartBtn.addEventListener("click", () => {
-    const visible = chartImg.classList.toggle("visible");
-    chartBtn.textContent = visible ? "Hide seal chart" : "Show seal chart";
-  });
+  // Shown by default — friends recording data need this to know what to record.
+  const { toggleBtn: chartBtn } = createReferenceChart(true);
 
   const undoBtn = document.createElement("button");
   undoBtn.textContent = "Undo last take (Backspace)";
@@ -155,7 +147,6 @@ export function runRecorder({ video, canvas, ctx, detectCanvas, detectCtx, hud }
     buttons,
   );
   document.querySelector("#app")!.appendChild(panel);
-  document.querySelector("#app")!.appendChild(chartImg);
 
   const countdownOverlay = document.createElement("div");
   countdownOverlay.className = "recorder-countdown";

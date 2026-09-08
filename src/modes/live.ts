@@ -3,6 +3,7 @@ import { drawHandLandmarks } from "../perception/drawLandmarks";
 import { buildFeatureVector } from "../perception/features";
 import { classify } from "../perception/classifier";
 import { SealSmoother } from "../perception/smoothing";
+import { createReferenceChart } from "../ui/referenceChart";
 
 export interface LiveDeps {
   video: HTMLVideoElement;
@@ -15,6 +16,9 @@ export interface LiveDeps {
 
 export function runLive({ video, canvas, ctx, detectCanvas, detectCtx, hud }: LiveDeps): void {
   const smoother = new SealSmoother();
+  const { toggleBtn } = createReferenceChart(false);
+  toggleBtn.className = "reference-chart-toggle";
+  document.querySelector("#app")!.appendChild(toggleBtn);
 
   // Rolling FPS average and a busy-flag so a slow detection never queues —
   // we drop frames instead of falling behind, per the architecture plan.

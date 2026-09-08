@@ -115,30 +115,20 @@ def small_rotate(F, rng, max_radians=0.12):
 def jitter(F, rng, sigma=0.015):
     return F + rng.uniform(-sigma, sigma, size=F.shape)
 
-# none/transition have far fewer raw recordings than any seal (~207/217 vs
-# 600-2000+) — a real test session found this matters: ambiguous poses like
-# a raised fist or a hand near the face were confidently misclassified as a
-# seal instead of none, and person-grouped CV independently flagged
-# ox<->transition as the single largest confusion in the whole matrix. Boost
-# their augmented-jitter reps so post-augmentation volume is roughly
-# comparable to an average seal's — each extra rep draws fresh random
-# jitter/rotation, so it's real synthetic variety, not literal duplicates.
-BOOST_LABEL_INDICES = {LABEL_TO_INDEX["none"], LABEL_TO_INDEX["transition"]}
-NORMAL_JITTER_REPS = 1
-BOOST_JITTER_REPS = 7  # -> 2 + 7*2 = 16 variants/sample, vs 2 + 1*2 = 4 normally
-
+# Tried boosting none/transition's augmentation reps well beyond the other
+# classes to compensate for having far fewer raw recordings. It backfired:
+# a real cross-validation run showed it pushed the decision boundary to be
+# more trigger-happy about calling things none/transition in general,
+# hurting several unrelated seals' recall as collateral damage, while still
+# leaving none's own held-out recall poor (13%) — synthetic jitter variety
+# can't substitute for what's actually missing, which is recordings from
+# more than one none-recording session. Flat 4x for every class; the real
+# fix is more raw none/transition data from more people, not more jitter.
 def augment(F, L, rng):
     mirrored = mirror_features(F)
-    parts_F, parts_L = [F, mirrored], [L, L]
-    boost_mask = np.isin(L, list(BOOST_LABEL_INDICES))
-    for mask, reps in ((~boost_mask, NORMAL_JITTER_REPS), (boost_mask, BOOST_JITTER_REPS)):
-        f, l, m = F[mask], L[mask], mirrored[mask]
-        for _ in range(reps):
-            parts_F.append(jitter(small_rotate(f, rng), rng))
-            parts_L.append(l)
-            parts_F.append(jitter(small_rotate(m, rng), rng))
-            parts_L.append(l)
-    return np.vstack(parts_F), np.concatenate(parts_L)
+    rotated = jitter(small_rotate(F, rng), rng)
+    rotated_mirrored = jitter(small_rotate(mirrored, rng), rng)
+    return np.vstack([F, mirrored, rotated, rotated_mirrored]), np.concatenate([L, L, L, L])
 
 def make_classifier(seed):
     return MLPClassifier(

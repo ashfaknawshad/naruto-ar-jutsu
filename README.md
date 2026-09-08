@@ -26,10 +26,10 @@ Building day-by-day per [SOLO-PLAN.md](SOLO-PLAN.md) §6. Check off as we go:
 
 - [x] **Day 1** — camera device picker, live 21-point hand skeleton overlay, FPS/latency HUD
 - [x] **Day 2** — landmark feature normalisation (`src/perception/features.ts`) + the dataset recorder tool (`?mode=record`)
-- [ ] **Day 3** — record the real dataset, train the classifier, live seal recognition with smoothing
-- [ ] **Day 4** — Three.js stage, hand anchoring, One Euro filter
-- [ ] **Day 5** — Rasengan shader
-- [ ] **Day 6** — occlusion, particles, charge/thrust loop
+- [x] **Day 3** — recorded dataset (14 recorders), classifier (`train/`, cross-validated ~76-87% depending on split), live seal recognition with smoothing
+- [x] **Day 4** — Three.js stage, hand anchoring, One Euro filter
+- [x] **Day 5** — Rasengan shader (core + procedural streak-field shell + orbiting particles)
+- [ ] **Day 6** — occlusion, charge/thrust loop
 - [ ] **Day 7** — post FX, audio, photo capture (**vertical slice gate**)
 - [ ] Days 8–12 — remaining jutsu, tutorial UI, booth polish, deploy
 

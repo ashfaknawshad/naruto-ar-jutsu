@@ -3,22 +3,38 @@ import { drawHandLandmarks } from "../perception/drawLandmarks";
 import { buildFeatureVector } from "../perception/features";
 import { classify } from "../perception/classifier";
 import { SealSmoother } from "../perception/smoothing";
+import { computeHandAnchor, selectPrimaryHand } from "../perception/anchor";
+import { OneEuroVec3Filter, OneEuroFilter } from "../perception/oneEuro";
+import { createStage } from "../vfx/stage";
 import { createReferenceChart } from "../ui/referenceChart";
 
 export interface LiveDeps {
   video: HTMLVideoElement;
   canvas: HTMLCanvasElement;
+  stageCanvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   detectCanvas: HTMLCanvasElement;
   detectCtx: CanvasRenderingContext2D;
   hud: HTMLDivElement;
 }
 
-export function runLive({ video, canvas, ctx, detectCanvas, detectCtx, hud }: LiveDeps): void {
+export function runLive({ video, canvas, stageCanvas, ctx, detectCanvas, detectCtx, hud }: LiveDeps): void {
   const smoother = new SealSmoother();
   const { toggleBtn } = createReferenceChart(false);
   toggleBtn.className = "reference-chart-toggle";
   document.querySelector("#app")!.appendChild(toggleBtn);
+
+  const stage = createStage(stageCanvas, stageCanvas.width, stageCanvas.height);
+  let stageWidth = stageCanvas.width;
+  let stageHeight = stageCanvas.height;
+
+  // Position gets heavier smoothing than scale — a jittery radius reads as
+  // "breathing", which is far less distracting than a jittery position,
+  // which reads as the effect not actually being attached to the hand.
+  const positionFilter = new OneEuroVec3Filter(1.2, 0.6, 1.0);
+  const scaleFilter = new OneEuroFilter(1.5, 0.3, 1.0);
+  let framesSinceHandSeen = 0;
+  const RESET_AFTER_MISSING_FRAMES = 15; // ~0.5s at 30fps — avoid a filter reset on every single dropped frame
 
   // Rolling FPS average and a busy-flag so a slow detection never queues —
   // we drop frames instead of falling behind, per the architecture plan.
@@ -36,6 +52,12 @@ export function runLive({ video, canvas, ctx, detectCanvas, detectCtx, hud }: Li
     if (fpsWindow.length > 30) fpsWindow.shift();
     const fps = fpsWindow.reduce((a, b) => a + b, 0) / fpsWindow.length;
 
+    if (stageCanvas.width !== stageWidth || stageCanvas.height !== stageHeight) {
+      stageWidth = stageCanvas.width;
+      stageHeight = stageCanvas.height;
+      stage.resize(stageWidth, stageHeight);
+    }
+
     if (!detecting && video.readyState >= 2) {
       detecting = true;
       detectCtx.drawImage(video, 0, 0, detectCanvas.width, detectCanvas.height);
@@ -49,8 +71,26 @@ export function runLive({ video, canvas, ctx, detectCanvas, detectCtx, hud }: Li
       const held = smoother.push(label, confidence);
       heldText = held ? `${held.label} (${(held.confidence * 100).toFixed(0)}%)` : "—";
 
+      const primaryHand = selectPrimaryHand(result);
+      if (primaryHand) {
+        framesSinceHandSeen = 0;
+        const anchor = computeHandAnchor(primaryHand);
+        const [sx, sy, sz] = positionFilter.filter(anchor.x, anchor.y, anchor.z, now);
+        const scale = scaleFilter.filter(anchor.scale, now);
+        stage.setAnchor(sx, sy, sz, scale, true);
+      } else {
+        framesSinceHandSeen++;
+        if (framesSinceHandSeen > RESET_AFTER_MISSING_FRAMES) {
+          positionFilter.reset();
+          scaleFilter.reset();
+        }
+        stage.setAnchor(0, 0, 0, 0, false);
+      }
+
       detecting = false;
     }
+
+    stage.render();
 
     hud.textContent = `fps: ${fps.toFixed(0)}\nhand detect: ${lastLatencyMs.toFixed(1)}ms\nseal: ${heldText}`;
 

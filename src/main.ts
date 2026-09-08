@@ -7,6 +7,7 @@ import { runRecorder } from "./tools/recorder";
 
 const video = document.querySelector<HTMLVideoElement>("#camera-feed")!;
 const canvas = document.querySelector<HTMLCanvasElement>("#overlay")!;
+const stageCanvas = document.querySelector<HTMLCanvasElement>("#stage")!;
 const hud = document.querySelector<HTMLDivElement>("#hud")!;
 const picker = document.querySelector<HTMLSelectElement>("#device-picker")!;
 const ctx = canvas.getContext("2d")!;
@@ -21,6 +22,8 @@ const detectCtx = detectCanvas.getContext("2d", { willReadFrequently: true })!;
 function resizeCanvasToVideo() {
   canvas.width = video.videoWidth || window.innerWidth;
   canvas.height = video.videoHeight || window.innerHeight;
+  stageCanvas.width = canvas.width;
+  stageCanvas.height = canvas.height;
 
   const aspect = canvas.height / canvas.width || 9 / 16;
   detectCanvas.width = DETECT_WIDTH;
@@ -38,7 +41,7 @@ async function main() {
     hud.textContent = `downloading hand-tracking model: ${(loadedBytes / 1_000_000).toFixed(1)}MB (first visit only — cached after)`;
   });
 
-  const deps = { video, canvas, ctx, detectCanvas, detectCtx, hud };
+  const deps = { video, canvas, stageCanvas, ctx, detectCanvas, detectCtx, hud };
   const mode = new URLSearchParams(location.search).get("mode");
 
   if (mode === "record") {

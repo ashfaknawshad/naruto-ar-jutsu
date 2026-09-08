@@ -54,25 +54,39 @@ varying vec3 vViewPosition;
 float streaks(vec3 p, float freq, float sharpness, float speed) {
   float angle = atan(p.z, p.x);
   float radius = length(p.xz) + p.y * 0.5;
+  // Slowed way down (was up to ±3.6) — this pattern is now the background
+  // fiber texture, not the dominant motion; the pulses below do that job.
   float coord = angle * freq + radius * freq * 1.6 - uTime * speed;
   return pow(max(sin(coord), 0.0), sharpness);
 }
 
 void main() {
-  float a = streaks(vPosition, 16.0, 22.0, 2.6);
-  float b = streaks(vPosition.yzx, 21.0, 26.0, -2.1);
-  float c = streaks(vPosition.zxy, 13.0, 24.0, 3.3);
-  float d = streaks(vPosition * 1.3, 18.0, 20.0, -3.6);
-  float density = max(max(a, b), max(c, d));
+  float a = streaks(vPosition, 16.0, 22.0, 1.0);
+  float b = streaks(vPosition.yzx, 21.0, 26.0, -0.8);
+  float c = streaks(vPosition.zxy, 13.0, 24.0, 1.3);
+  float d = streaks(vPosition * 1.3, 18.0, 20.0, -1.4);
+  float fiber = max(max(a, b), max(c, d));
 
   float n = fbm(vPosition * 2.5 + uTime * 0.15);
-  density *= 0.65 + 0.35 * (n * 0.5 + 0.5);
+  fiber *= 0.65 + 0.35 * (n * 0.5 + 0.5);
 
   vec3 viewDir = normalize(vViewPosition);
-  // No separate outer aura shell any more (it kept rendering as a flat
-  // disc instead of a glow, through several tuning passes) — this shell's
-  // own edge now carries the "outer glow" job via a stronger fresnel term.
-  float fresnel = pow(1.0 - max(dot(vNormal, viewDir), 0.0), 1.3);
+  float facing = max(dot(vNormal, viewDir), 0.0); // 1 at the point facing the camera dead-on, 0 at the silhouette edge
+  float fresnel = pow(1.0 - facing, 1.3);
+
+  // The actual "shooting inward" motion: this is a thin shell, not a solid
+  // volume, so there's no true radial depth to travel through — instead
+  // treat (1 - facing) as a pseudo-radius across the visible disc (0 at
+  // its screen-centre, 1 at its silhouette) and run a travelling wave over
+  // that. The "+ uTime" sign (not "-") is what makes rings move toward the
+  // centre as time increases rather than away from it. Two staggered
+  // frequencies/speeds so rings don't all arrive in lockstep.
+  float pseudoRadius = 1.0 - facing;
+  float pulse1 = pow(max(sin(pseudoRadius * 9.0 + uTime * 5.0), 0.0), 6.0);
+  float pulse2 = pow(max(sin(pseudoRadius * 13.0 + uTime * 7.0 + 2.0), 0.0), 8.0);
+  float pulses = max(pulse1, pulse2);
+
+  float density = clamp(fiber * 0.7 + pulses * 0.9, 0.0, 1.0);
 
   vec3 deep = vec3(0.03, 0.3, 0.8);
   vec3 bright = vec3(0.75, 0.97, 1.0);

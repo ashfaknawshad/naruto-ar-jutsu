@@ -14,6 +14,17 @@ const PALM_LANDMARKS = [0, 5, 9, 13, 17];
 // rotation-invariance comes from the world-landmark ratio, not this number.
 const REFERENCE_PALM_METRES = 0.09;
 
+// Palm segments (wrist/MCP to wrist/MCP) span roughly 2-10cm on a real
+// hand. Used to reject degenerate world-landmark estimates before they
+// reach a divisor.
+const MIN_PLAUSIBLE_SEGMENT_METRES = 0.02;
+
+// Final safety bounds on scale, as a fraction of the frame. A booth effect
+// that quietly fills the entire screen is worse than one that's slightly
+// the wrong size, so this clamps rather than trusting the estimate blindly.
+const MIN_SCALE = 0.05;
+const MAX_SCALE = 0.45;
+
 export interface HandAnchor {
   /** Palm centroid, in MediaPipe's normalized 0-1 image coordinates. */
   x: number;
@@ -60,7 +71,7 @@ function normalize(x: number, y: number, z: number): { x: number; y: number; z: 
  * least-foreshortened one recovers the true scale.
  */
 function projectionScale(landmarks: NormalizedLandmark[], worldLandmarks: Landmark[]): number {
-  let maxRatio = 0;
+  const ratios: number[] = [];
   for (let i = 0; i < PALM_LANDMARKS.length; i++) {
     for (let j = i + 1; j < PALM_LANDMARKS.length; j++) {
       const a = PALM_LANDMARKS[i];
@@ -71,10 +82,20 @@ function projectionScale(landmarks: NormalizedLandmark[], worldLandmarks: Landma
         worldLandmarks[a].y - worldLandmarks[b].y,
         worldLandmarks[a].z - worldLandmarks[b].z,
       );
-      if (metric > 1e-5) maxRatio = Math.max(maxRatio, projected / metric);
+      // Real segments between these points are ~2-10cm. Anything shorter is
+      // a bad world-landmark estimate, and since it sits in the divisor it
+      // would produce a wildly inflated ratio.
+      if (metric >= MIN_PLAUSIBLE_SEGMENT_METRES) ratios.push(projected / metric);
     }
   }
-  return maxRatio;
+  if (ratios.length === 0) return 0;
+
+  // Want the least-foreshortened segment, but NOT the raw maximum: max is
+  // maximally sensitive to exactly the outlier above, and a single bad pair
+  // blew the effect up to fill the screen in testing. A high percentile
+  // keeps the "least foreshortened" intent while ignoring one bad estimate.
+  ratios.sort((a, b) => a - b);
+  return ratios[Math.floor(ratios.length * 0.75)];
 }
 
 /**
@@ -110,7 +131,8 @@ export function computeHandAnchor({ landmarks, worldLandmarks }: HandSample): Ha
   // out of the palm toward the viewer for either hand.
   if (normal.z > 0) normal = { x: -normal.x, y: -normal.y, z: -normal.z };
 
-  const scale = projectionScale(landmarks, worldLandmarks) * REFERENCE_PALM_METRES;
+  const rawScale = projectionScale(landmarks, worldLandmarks) * REFERENCE_PALM_METRES;
+  const scale = Math.min(Math.max(rawScale, MIN_SCALE), MAX_SCALE);
 
   return { x, y, z, scale, normal };
 }

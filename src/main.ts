@@ -1,6 +1,7 @@
 import "./style.css";
 import { initDevicePicker } from "./camera/devices";
 import { initHandTracker } from "./perception/handTracker";
+import { loadClassifier } from "./perception/classifier";
 import { runLive } from "./modes/live";
 import { runRecorder } from "./tools/recorder";
 
@@ -43,6 +44,8 @@ async function main() {
   if (mode === "record") {
     runRecorder(deps);
   } else {
+    hud.textContent = "loading classifier...";
+    await loadClassifier();
     runLive(deps);
   }
 }

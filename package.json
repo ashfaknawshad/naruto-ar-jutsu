@@ -6,6 +6,8 @@
   "scripts": {
     "postinstall": "node scripts/fetch-assets.mjs",
     "fetch-assets": "node scripts/fetch-assets.mjs",
+    "inspect-dataset": "node scripts/inspect-dataset.mjs",
+    "train": "node --experimental-strip-types train/train-classifier.mjs",
     "dev": "vite",
     "dev:lan": "vite --host",
     "build": "tsc -b && vite build",

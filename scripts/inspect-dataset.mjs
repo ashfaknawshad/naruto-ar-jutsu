@@ -70,7 +70,7 @@ for (const file of files) {
     continue;
   }
   parsed.samples.forEach((s, index) => {
-    samples.push({ file, index, label: s.label, person: s.person, features: s.features });
+    samples.push({ file, index, label: s.label, person: s.person, features: s.features, corrupt: s.features.some((v) => Math.abs(v) > 10) });
   });
 }
 
@@ -109,6 +109,16 @@ if (noHands.length > 0) {
   console.log();
 }
 
+// --- Obvious defects: numerical blow-up from a degenerate MediaPipe frame --
+// (fixed at the source in features.ts's MIN_HAND_SCALE guard going forward —
+// this only catches samples recorded before that fix landed.)
+const corrupt = samples.filter((s) => s.corrupt);
+if (corrupt.length > 0) {
+  console.log(`${corrupt.length} samples have numerically corrupted features (degenerate hand detection):`);
+  for (const s of corrupt) console.log(`  ${s.file} [${s.index}] ${s.person}/${s.label}`);
+  console.log();
+}
+
 // --- Statistical outliers, mirror-aware -------------------------------------
 // A sample recorded mirror-flipped isn't noise (see mirrorFeatures doc) —
 // so for each sample we score it by whichever orientation (as-recorded, or
@@ -117,7 +127,9 @@ if (noHands.length > 0) {
 console.log("checking for likely mislabeled / noisy samples per class...\n");
 
 for (const label of labels) {
-  const inClass = samples.filter((s) => s.label === label && !(s.features[PRESENCE_OFFSET] === 0 && s.features[PRESENCE_OFFSET + 1] === 0));
+  const inClass = samples.filter(
+    (s) => s.label === label && !s.corrupt && !(s.features[PRESENCE_OFFSET] === 0 && s.features[PRESENCE_OFFSET + 1] === 0),
+  );
   if (inClass.length < 8) continue; // too few to say anything statistically meaningful
 
   const pool = inClass.flatMap((s) => [s.features, Array.from(mirrorFeatures(s.features))]);

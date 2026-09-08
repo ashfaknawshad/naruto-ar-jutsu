@@ -6,6 +6,16 @@ const WRIST = 0;
 const MIDDLE_MCP = 9;
 const FINGERTIPS = [4, 8, 12, 16, 20]; // thumb, index, middle, ring, pinky
 
+// A real hand's wrist-to-middle-MCP span, in MediaPipe's 0-1 normalized
+// image coordinates, doesn't collapse this small even at booth distance —
+// MediaPipe's own hand detector needs a reasonably sized crop to fire at
+// all. A span below this is a degenerate detection (foreshortened, hand
+// edge-on to the camera, or a bad frame), and dividing by it in
+// normalizeHand blows the output up to huge, useless values instead of
+// throwing — a real recording session hit exactly this (features with
+// |value| > 300 in an otherwise ~[-3, 3] range). Treat it as no hand.
+const MIN_HAND_SCALE = 0.03;
+
 // Layout: [left hand 63][right hand 63][leftPresent][rightPresent]
 // [wristDistance][relativeRotation][5x cross-hand fingertip distances]
 export const FEATURE_LENGTH = PER_HAND_FEATURES * 2 + 2 + 1 + 1 + FINGERTIPS.length; // 135
@@ -37,7 +47,7 @@ function normalizeHand(landmarks: NormalizedLandmark[]): NormalizedHand {
   const mcp = landmarks[MIDDLE_MCP];
   const dx = mcp.x - wrist.x;
   const dy = mcp.y - wrist.y;
-  const scale = Math.hypot(dx, dy) || 1e-6;
+  const scale = Math.max(Math.hypot(dx, dy), 1e-6);
 
   // Rotation that maps the unit wrist->MCP vector onto (0, -1) ("up" in
   // screen space, where y grows downward). See derivation: for unit vector
@@ -87,14 +97,24 @@ export function buildFeatureVector(result: HandLandmarkerResult): Float32Array {
   let rightNorm: NormalizedHand | null = null;
 
   if (left) {
-    leftNorm = normalizeHand(left);
-    vector.set(leftNorm.vector, LEFT_OFFSET);
-    vector[PRESENCE_OFFSET] = 1;
+    const norm = normalizeHand(left);
+    if (norm.scale >= MIN_HAND_SCALE) {
+      leftNorm = norm;
+      vector.set(norm.vector, LEFT_OFFSET);
+      vector[PRESENCE_OFFSET] = 1;
+    } else {
+      left = null; // degenerate detection — treat as if this hand weren't there
+    }
   }
   if (right) {
-    rightNorm = normalizeHand(right);
-    vector.set(rightNorm.vector, RIGHT_OFFSET);
-    vector[PRESENCE_OFFSET + 1] = 1;
+    const norm = normalizeHand(right);
+    if (norm.scale >= MIN_HAND_SCALE) {
+      rightNorm = norm;
+      vector.set(norm.vector, RIGHT_OFFSET);
+      vector[PRESENCE_OFFSET + 1] = 1;
+    } else {
+      right = null;
+    }
   }
 
   // Cross-hand features carry most of the signal for two-handed seals, but

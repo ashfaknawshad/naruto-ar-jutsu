@@ -6,3 +6,4 @@ dist/
 tsconfig.tsbuildinfo
 public/models/*.task
 public/mediapipe/
+__pycache__/

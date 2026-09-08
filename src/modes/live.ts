@@ -83,17 +83,6 @@ export function runLive({ video, canvas, stageCanvas, ctx, detectCanvas, detectC
       if (primaryHand) {
         framesSinceHandSeen = 0;
         const anchor = computeHandAnchor(primaryHand);
-
-        // DEBUG (Day 4 anchoring check): a magenta dot at the raw anchor,
-        // drawn on the 2D overlay whose coordinate mapping is already known
-        // to be correct (drawHandLandmarks uses it too) — if this dot sits
-        // on the palm but the sphere doesn't, the bug is in the Three.js
-        // stage's coordinate mapping, not in computeHandAnchor.
-        ctx.beginPath();
-        ctx.arc(anchor.x * canvas.width, anchor.y * canvas.height, 8, 0, Math.PI * 2);
-        ctx.fillStyle = "#ff00ff";
-        ctx.fill();
-
         const [sx, sy, sz] = positionFilter.filter(anchor.x, anchor.y, anchor.z, now);
         const scale = scaleFilter.filter(anchor.scale, now);
         stage.setAnchor(sx, sy, sz, scale, true);

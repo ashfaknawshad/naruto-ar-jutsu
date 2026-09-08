@@ -97,6 +97,25 @@ void main() {
 }
 `;
 
+// A thin edge-only glow, rendered with depthTest disabled so it draws over
+// whatever's in front of it — including the finger-occlusion mask (see
+// stage.ts). Real light bleeds over an object held in front of it; a solid
+// depth-tested shell would just look like it stops dead at the fingertip,
+// which is the thing that would give away "pasted on" instead of "held".
+// Deliberately subtle (low alpha, sharp falloff) — this only needs to read
+// as a thin rim, not repeat the earlier disc-shaped-aura mistake.
+const GLOW_FRAGMENT = /* glsl */ `
+varying vec3 vNormal;
+varying vec3 vViewPosition;
+
+void main() {
+  vec3 viewDir = normalize(vViewPosition);
+  float fresnel = pow(clamp(1.0 - abs(dot(vNormal, viewDir)), 0.0, 1.0), 4.0);
+  vec3 color = vec3(0.6, 0.9, 1.0);
+  gl_FragColor = vec4(color, fresnel * 0.35);
+}
+`;
+
 export interface Rasengan {
   group: Group;
   /** @param elapsedSeconds A monotonically increasing clock, not a per-frame delta — drives rotation and every animated shader. */
@@ -105,11 +124,10 @@ export interface Rasengan {
 
 /**
  * The flagship effect: a bright core, a dense procedural streak-field
- * shell (see MID_FRAGMENT above), and a cloud of orbiting particles
- * inside. A separate outer-aura shell was cut — it rendered as a flat
- * disc rather than a glow through several tuning passes; the mid shell's
- * own edge fresnel now carries that job instead. All additively blended
- * so it reads as glowing energy, not a flat ball.
+ * shell (see MID_FRAGMENT above), a thin depth-ignoring glow rim (so light
+ * bleeds over the finger-occlusion mask, see stage.ts), and a cloud of
+ * orbiting particles inside. All additively blended so it reads as glowing
+ * energy, not a flat ball.
  */
 export function createRasengan(): Rasengan {
   const group = new Group();
@@ -137,9 +155,22 @@ export function createRasengan(): Rasengan {
   });
   const mid = new Mesh(new IcosahedronGeometry(0.95, 4), midMaterial);
 
+  const glow = new Mesh(
+    new IcosahedronGeometry(1.0, 2),
+    new ShaderMaterial({
+      vertexShader: VERTEX_SHADER,
+      fragmentShader: GLOW_FRAGMENT,
+      transparent: true,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      depthTest: false,
+      side: FrontSide,
+    }),
+  );
+
   const particles = createChakraParticles();
 
-  group.add(core, mid, particles.points);
+  group.add(core, mid, glow, particles.points);
 
   function update(elapsedSeconds: number) {
     core.rotation.y = elapsedSeconds * 1.1;

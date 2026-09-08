@@ -1,4 +1,4 @@
-import { Group, Mesh, IcosahedronGeometry, ShaderMaterial, AdditiveBlending, FrontSide, BackSide } from "three";
+import { Group, Mesh, IcosahedronGeometry, ShaderMaterial, AdditiveBlending, FrontSide } from "three";
 import { NOISE_GLSL } from "./shaders/noise";
 import { createChakraParticles } from "./particles";
 
@@ -59,42 +59,27 @@ float streaks(vec3 p, float freq, float sharpness, float speed) {
 }
 
 void main() {
-  float a = streaks(vPosition, 9.0, 14.0, 2.6);
-  float b = streaks(vPosition.yzx, 12.0, 18.0, -2.1);
-  float c = streaks(vPosition.zxy, 7.0, 16.0, 3.3);
-  float density = max(a, max(b, c));
+  float a = streaks(vPosition, 16.0, 22.0, 2.6);
+  float b = streaks(vPosition.yzx, 21.0, 26.0, -2.1);
+  float c = streaks(vPosition.zxy, 13.0, 24.0, 3.3);
+  float d = streaks(vPosition * 1.3, 18.0, 20.0, -3.6);
+  float density = max(max(a, b), max(c, d));
 
   float n = fbm(vPosition * 2.5 + uTime * 0.15);
   density *= 0.65 + 0.35 * (n * 0.5 + 0.5);
 
   vec3 viewDir = normalize(vViewPosition);
-  float fresnel = pow(1.0 - max(dot(vNormal, viewDir), 0.0), 1.6);
+  // No separate outer aura shell any more (it kept rendering as a flat
+  // disc instead of a glow, through several tuning passes) — this shell's
+  // own edge now carries the "outer glow" job via a stronger fresnel term.
+  float fresnel = pow(1.0 - max(dot(vNormal, viewDir), 0.0), 1.3);
 
   vec3 deep = vec3(0.03, 0.3, 0.8);
   vec3 bright = vec3(0.75, 0.97, 1.0);
-  vec3 color = mix(deep, bright, clamp(density + fresnel * 0.3, 0.0, 1.0));
+  vec3 color = mix(deep, bright, clamp(density + fresnel * 0.5, 0.0, 1.0));
 
-  float alpha = clamp(density * 0.85 + fresnel * 0.35 + 0.05, 0.0, 1.0);
+  float alpha = clamp(density * 0.85 + fresnel * 0.6 + 0.05, 0.0, 1.0);
   gl_FragColor = vec4(color, alpha);
-}
-`;
-
-// Outer aura — rendered BackSide so it glows around the silhouette rather
-// than covering the front face, a cheap way to get a soft halo without a
-// real bloom post-pass (that's Day 7's job). Rim-only: abs() on the dot
-// product (fresnel is about how grazing the surface is, not which side is
-// being rendered) plus a hard clamp before pow(), and a fairly steep
-// falloff power — an earlier unclamped version washed the whole silhouette
-// into a flat filled disc instead of a thin glowing edge.
-const AURA_FRAGMENT = /* glsl */ `
-varying vec3 vNormal;
-varying vec3 vViewPosition;
-
-void main() {
-  vec3 viewDir = normalize(vViewPosition);
-  float fresnel = pow(clamp(1.0 - abs(dot(vNormal, viewDir)), 0.0, 1.0), 3.5);
-  vec3 color = vec3(0.45, 0.8, 1.0);
-  gl_FragColor = vec4(color, fresnel * 0.55);
 }
 `;
 
@@ -105,12 +90,12 @@ export interface Rasengan {
 }
 
 /**
- * The flagship effect, three shell layers plus a particle fill:
- *  1. core — bright hot centre.
- *  2. mid — dense procedural streak field (see MID_FRAGMENT above).
- *  3. outer aura — soft BackSide halo.
- *  + a cloud of orbiting particles inside for extra texture/depth.
- * All additively blended so it reads as glowing energy, not a flat ball.
+ * The flagship effect: a bright core, a dense procedural streak-field
+ * shell (see MID_FRAGMENT above), and a cloud of orbiting particles
+ * inside. A separate outer-aura shell was cut — it rendered as a flat
+ * disc rather than a glow through several tuning passes; the mid shell's
+ * own edge fresnel now carries that job instead. All additively blended
+ * so it reads as glowing energy, not a flat ball.
  */
 export function createRasengan(): Rasengan {
   const group = new Group();
@@ -136,28 +121,15 @@ export function createRasengan(): Rasengan {
     depthWrite: false,
     side: FrontSide,
   });
-  const mid = new Mesh(new IcosahedronGeometry(0.8, 4), midMaterial);
-
-  const aura = new Mesh(
-    new IcosahedronGeometry(1.05, 2),
-    new ShaderMaterial({
-      vertexShader: VERTEX_SHADER,
-      fragmentShader: AURA_FRAGMENT,
-      transparent: true,
-      blending: AdditiveBlending,
-      depthWrite: false,
-      side: BackSide,
-    }),
-  );
+  const mid = new Mesh(new IcosahedronGeometry(0.95, 4), midMaterial);
 
   const particles = createChakraParticles();
 
-  group.add(core, mid, aura, particles.points);
+  group.add(core, mid, particles.points);
 
   function update(elapsedSeconds: number) {
     core.rotation.y = elapsedSeconds * 1.1;
     mid.rotation.y = -elapsedSeconds * 0.3;
-    aura.rotation.y = -elapsedSeconds * 0.4;
     midMaterial.uniforms.uTime.value = elapsedSeconds;
     particles.update(elapsedSeconds);
   }
